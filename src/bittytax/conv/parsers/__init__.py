@@ -62,6 +62,7 @@ from . import (
     lbank,
     ledgerlive,
     liquid,
+    luno,
     mercatox,
     mexc,
     mymonero,
