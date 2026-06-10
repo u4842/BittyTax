@@ -7,6 +7,9 @@ from ...bt_types import TrType
 
 WALLET = "Luno"
 
+def _map_currency(ccy):
+    return 'BTC' if ccy == 'XBT' else ccy
+
 # TODO understand Handler parser vs Handlers2 _parser
 def parse_luno(data_rows, _parser, **_kwargs):
     '''
@@ -36,7 +39,7 @@ def parse_luno(data_rows, _parser, **_kwargs):
                 TrType.DEPOSIT,
                 data_row.timestamp,
                 buy_quantity=abs(Decimal(row_dict['Balance delta'])),
-                buy_asset='BTC' if row_dict['Currency'] == 'XBT' else row_dict['Currency'],
+                buy_asset=_map_currency(row_dict['Currency']),
                 wallet=WALLET,
                 note='Description = {}'.format(row_dict['Description'])
             )
@@ -48,7 +51,7 @@ def parse_luno(data_rows, _parser, **_kwargs):
                 TrType.WITHDRAWAL,
                 data_row.timestamp,
                 sell_quantity=abs(Decimal(row_dict['Balance delta'])),
-                sell_asset='BTC' if row_dict['Currency'] == 'XBT' else row_dict['Currency'],
+                sell_asset=_map_currency(row_dict['Currency']),
                 wallet=WALLET,
                 note='Description = {}'.format(row_dict['Description'])
             )
@@ -78,6 +81,18 @@ def parse_luno(data_rows, _parser, **_kwargs):
             )
             continue
 
+        # Interest from Savings
+        if row_dict['Description'] == 'Interest paid out':
+            data_row.t_record = TransactionOutRecord(
+                TrType.INTEREST,
+                data_row.timestamp,
+                buy_quantity=abs(Decimal(row_dict['Balance delta'])),
+                buy_asset=_map_currency(row_dict['Currency']),
+                wallet=WALLET,
+                note='Description = {}'.format(row_dict['Description'])
+            )
+            continue
+
         if not (row_dict['Description'].startswith(('Bought', 'Sold', 'Trading fee'))
                 or row_dict['Description'].endswith(' send fee')):
             continue;
@@ -89,7 +104,7 @@ def parse_luno(data_rows, _parser, **_kwargs):
                 print('Warning: trade fee timestamp different to previous transaction {} != {}', data_row.timestamp, prev_txn.timestamp)
 
             prev_txn.fee_quantity = abs(Decimal(row_dict['Balance delta']))
-            prev_txn.fee_asset = 'BTC' if row_dict['Currency'] == 'XBT' else row_dict['Currency']
+            prev_txn.fee_asset = _map_currency(row_dict['Currency'])
 
             # > If the Fee Asset is the same as Sell Asset, then the Sell Quantity must be the net amount (after fee deduction), not gross amount.
             # > If the Fee Asset is the same as Buy Asset, then the Buy Quantity must be the gross amount (before fee deduction), not net amount.
@@ -168,7 +183,7 @@ def parse_luno(data_rows, _parser, **_kwargs):
 
     # TODO promo
 
-# TODO might need to split into a V1 and V2 to support different columns
+# Multiple DataParser registrations for different CSV column formats
 DataParser(ParserType.EXCHANGE,
            WALLET,
            [
@@ -190,6 +205,26 @@ DataParser(ParserType.EXCHANGE,
            'Value currency',
            'Value amount',
            'Reference'
+           ],
+           worksheet_name=WALLET,
+            all_handler=parse_luno)
+
+# V1 format: older exports with a single "Value" column
+DataParser(ParserType.EXCHANGE,
+           WALLET,
+           [
+           'Wallet ID',
+           'Row',
+           'Timestamp (UTC)',
+           'Description',
+           'Currency',
+           'Balance delta',
+           'Available balance delta',
+           'Balance',
+           'Available balance',
+           'Cryptocurrency transaction ID',
+           'Cryptocurrency address',
+           'Value',
            ],
            worksheet_name=WALLET,
            all_handler=parse_luno)
