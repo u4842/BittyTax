@@ -27,11 +27,33 @@ def parse_luno(data_rows, _parser, **_kwargs):
         row_dict = data_row.row_dict
         print(row_dict)
         # 5446115377427084498,10680,2021-05-01 23:04:40,"Sold 0.0007 BTC/GBP @ 41,966.92",XBT,-0.00070000,0.00000000,0.00388333,0.00268333,,,GBP,29.37
-        if not row_dict['Description'].startswith(('Bought', 'Sold', 'Trading fee')):
-            # TODO "Sent" etc
-            continue;
-        
+
         data_row.timestamp = DataParser.parse_timestamp(row_dict['Timestamp (UTC)'])
+
+        if row_dict['Description'] == 'Deposit received':
+            data_row.t_record = TransactionOutRecord(
+                TrType.DEPOSIT,
+                data_row.timestamp,
+                buy_quantity=abs(Decimal(row_dict['Balance delta'])),
+                buy_asset=row_dict['Currency'],
+                wallet=WALLET,
+                note='Description = {}'.format(row_dict['Description'])
+            )
+            continue
+
+        if row_dict['Description'].startswith('Payment sent to'):
+            data_row.t_record = TransactionOutRecord(
+                TrType.WITHDRAWAL,
+                data_row.timestamp,
+                sell_quantity=abs(Decimal(row_dict['Balance delta'])),
+                sell_asset=row_dict['Currency'],
+                wallet=WALLET,
+                note='Description = {}'.format(row_dict['Description'])
+            )
+            continue
+
+        if not row_dict['Description'].startswith(('Bought', 'Sold', 'Trading fee')):
+            continue;
 
         # A Trading fee is on the subsequent row to the trade, hence the need to use all_handler.
         if row_dict['Description'] == 'Trading fee':
@@ -117,7 +139,7 @@ def parse_luno(data_rows, _parser, **_kwargs):
             note='Description = {}'.format(row_dict['Description'])
         )
 
-    # TODO fiat deposit, fiat withdrawal, crypto send, crypto send fee, crypto receive, promo
+    # TODO crypto send, crypto send fee, crypto receive, promo
 
 # TODO might need to split into a V1 and V2 to support different columns
 DataParser(ParserType.EXCHANGE,
