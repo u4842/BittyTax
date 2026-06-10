@@ -115,16 +115,47 @@ def parse_luno(data_rows, _parser, **_kwargs):
             continue;
 
         # Instant trades have different description:
-        #   Bought BTCÂ 0.00272219 for GBPÂ 101.00
-        # or
-        #   Sold BTCÂ 0.003 for Â£234.83
+        #   Bought BTC 0.00272219 for GBP 101.00
+        #   Sold AVAX 0.050999 for BTC 0.00002121
+        #   Sold BTC 0.003 for £234.83
+        #
+        # Quantities are separated from assets by a non-breaking space.
+        # in Excel it looks like Â
+        # Bought BTCÂ 0.00272219 for GBPÂ 101.00
 
-        # Eugh. A different syntax.
-        # TODO fix properly not ignore
-        # 
-        # TODO instant trades have an inbuilt fee 1.5% vs fiat, 2% vs crypto, not a separate line item.
-        # Can I break out a separate fee?
+        # Fees are inbuilt and not shown as a separate row. Nothing we can do.
         if ' for ' in row_dict['Description']:
+            desc = row_dict['Description']
+            left, right = desc.split(' for ')
+            side, base_asset, base_qty_str = left.split()
+            base_quantity = Decimal(base_qty_str)
+
+            right_parts = right.split()
+            if right_parts[0].startswith('£'):
+                quote_asset = 'GBP'
+                quote_qty_str = right_parts[0][1:]
+            else:
+                quote_asset = right_parts[0]
+                quote_qty_str = right_parts[1]
+            quote_quantity = Decimal(quote_qty_str.replace(',', ''))
+
+            if side == 'Bought':
+                buy_quantity, sell_quantity = base_quantity, quote_quantity
+                buy_asset, sell_asset = base_asset, quote_asset
+            else: # Sold
+                buy_quantity, sell_quantity = quote_quantity, base_quantity
+                buy_asset, sell_asset = quote_asset, base_asset
+
+            data_row.t_record = TransactionOutRecord(
+                TrType.TRADE,
+                data_row.timestamp,
+                buy_quantity=buy_quantity,
+                buy_asset=buy_asset,
+                sell_quantity=sell_quantity,
+                sell_asset=sell_asset,
+                wallet=WALLET,
+                note='Description = {}'.format(desc)
+            )
             continue
 
 
