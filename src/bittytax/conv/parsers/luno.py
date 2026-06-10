@@ -28,7 +28,6 @@ def parse_luno(data_rows, _parser, **_kwargs):
     prev_txn = None
     for data_row in data_rows:
         row_dict = data_row.row_dict
-        print(row_dict)
         # 5446115377427084498,10680,2021-05-01 23:04:40,"Sold 0.0007 BTC/GBP @ 41,966.92",XBT,-0.00070000,0.00000000,0.00388333,0.00268333,,,GBP,29.37
 
         data_row.timestamp = DataParser.parse_timestamp(row_dict['Timestamp (UTC)'])
@@ -71,7 +70,7 @@ def parse_luno(data_rows, _parser, **_kwargs):
 
         # Fiat sent
         if row_dict['Description'].startswith('Payment sent to'):
-            data_row.t_record = TransactionOutRecord(
+            data_row.t_record = prev_txn = TransactionOutRecord(
                 TrType.WITHDRAWAL,
                 data_row.timestamp,
                 sell_quantity=abs(Decimal(row_dict['Balance delta'])),
