@@ -30,6 +30,31 @@ def parse_luno(data_rows, _parser, **_kwargs):
 
         data_row.timestamp = DataParser.parse_timestamp(row_dict['Timestamp (UTC)'])
 
+        # Crypto received
+        if row_dict['Description'].startswith('Received '):
+            data_row.t_record = TransactionOutRecord(
+                TrType.DEPOSIT,
+                data_row.timestamp,
+                buy_quantity=abs(Decimal(row_dict['Balance delta'])),
+                buy_asset='BTC' if row_dict['Currency'] == 'XBT' else row_dict['Currency'],
+                wallet=WALLET,
+                note='Description = {}'.format(row_dict['Description'])
+            )
+            continue
+
+        # Crypto sent
+        if row_dict['Description'].startswith('Sent '):
+            data_row.t_record = prev_txn = TransactionOutRecord(
+                TrType.WITHDRAWAL,
+                data_row.timestamp,
+                sell_quantity=abs(Decimal(row_dict['Balance delta'])),
+                sell_asset='BTC' if row_dict['Currency'] == 'XBT' else row_dict['Currency'],
+                wallet=WALLET,
+                note='Description = {}'.format(row_dict['Description'])
+            )
+            continue
+
+        # Fiat received
         if row_dict['Description'] == 'Deposit received':
             data_row.t_record = TransactionOutRecord(
                 TrType.DEPOSIT,
@@ -41,6 +66,7 @@ def parse_luno(data_rows, _parser, **_kwargs):
             )
             continue
 
+        # Fiat sent
         if row_dict['Description'].startswith('Payment sent to'):
             data_row.t_record = TransactionOutRecord(
                 TrType.WITHDRAWAL,
@@ -52,11 +78,12 @@ def parse_luno(data_rows, _parser, **_kwargs):
             )
             continue
 
-        if not row_dict['Description'].startswith(('Bought', 'Sold', 'Trading fee')):
+        if not (row_dict['Description'].startswith(('Bought', 'Sold', 'Trading fee'))
+                or row_dict['Description'].endswith(' send fee')):
             continue;
 
-        # A Trading fee is on the subsequent row to the trade, hence the need to use all_handler.
-        if row_dict['Description'] == 'Trading fee':
+        # A Trading fee or crypto send fee is on the subsequent row to the trade/send, hence the need to use all_handler.
+        if row_dict['Description'] == 'Trading fee' or row_dict['Description'].endswith(' send fee'):
             if prev_txn.timestamp != data_row.timestamp:
                 # I have seen a 1s difference before
                 print('Warning: trade fee timestamp different to previous transaction {} != {}', data_row.timestamp, prev_txn.timestamp)
@@ -66,9 +93,9 @@ def parse_luno(data_rows, _parser, **_kwargs):
 
             # > If the Fee Asset is the same as Sell Asset, then the Sell Quantity must be the net amount (after fee deduction), not gross amount.
             # > If the Fee Asset is the same as Buy Asset, then the Buy Quantity must be the gross amount (before fee deduction), not net amount.
+            # > It is important that any withdrawal fee paid is specified, the withdrawal quantity should be the net amount (after fee deduction).
             if prev_txn.fee_asset == prev_txn.sell_asset:
                 prev_txn.sell_quantity -= prev_txn.fee_quantity
-            # else NO-OP
 
             continue;
 
@@ -139,7 +166,7 @@ def parse_luno(data_rows, _parser, **_kwargs):
             note='Description = {}'.format(row_dict['Description'])
         )
 
-    # TODO crypto send, crypto send fee, crypto receive, promo
+    # TODO promo
 
 # TODO might need to split into a V1 and V2 to support different columns
 DataParser(ParserType.EXCHANGE,
